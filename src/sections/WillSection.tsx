@@ -1,5 +1,8 @@
+import { useEffect, useRef } from "react";
 import type { CalcResult } from "@/engine";
 import type { WillMeta } from "@/will/generateWillPdf";
+import { useAccount } from "@/account/AccountContext";
+import type { Designee } from "@/account/types";
 import { SectionShell } from "@/components/SectionShell";
 import { InfoTip } from "@/components/InfoTip";
 import { FileDown } from "lucide-react";
@@ -39,10 +42,36 @@ export function WillSection({
   result: CalcResult;
   meta: WillMeta;
   onMeta: (patch: Partial<WillMeta>) => void;
-  onGenerate: () => void;
+  onGenerate: (designees: Designee[]) => void;
 }) {
   const ready = result.ok && result.allocations.length > 0;
   const hasBequest = (result.pipeline?.wasiyyaApplied ?? 0) > 0;
+
+  const { profile } = useAccount();
+  const designees = profile?.designees ?? [];
+
+  // Prefill the will fields from the account (name + designees) — once, and only
+  // into fields the user has not typed in yet.
+  const prefilledRef = useRef<Set<string>>(new Set());
+  const designeesJson = JSON.stringify(designees);
+  useEffect(() => {
+    const ds = JSON.parse(designeesJson) as Designee[];
+    const patch: Partial<WillMeta> = {};
+    const fill = (key: keyof WillMeta, value: string | undefined) => {
+      if (!meta[key] && value && !prefilledRef.current.has(key)) {
+        patch[key] = value;
+        prefilledRef.current.add(key);
+      }
+    };
+    fill("testatorName", profile?.displayName?.trim() || undefined);
+    fill("executorName", ds.find((d) => d.role === "executor")?.name.trim() || undefined);
+    fill(
+      "bequestRecipient",
+      ds.find((d) => d.role === "bequest-beneficiary")?.name.trim() || undefined,
+    );
+    if (Object.keys(patch).length > 0) onMeta(patch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [designeesJson, profile?.displayName]);
 
   return (
     <SectionShell
@@ -101,11 +130,18 @@ export function WillSection({
         )}
       </div>
 
+      {profile && designees.length > 0 && (
+        <p className="mt-3 text-xs text-ink-faint">
+          Blank fields above are prefilled from your account — and the witnesses, guardian, and
+          beneficiary you saved as designees are written into the PDF automatically.
+        </p>
+      )}
+
       <div className="no-print mt-5 flex flex-wrap items-center gap-3">
         <button
           type="button"
           disabled={!ready}
-          onClick={onGenerate}
+          onClick={() => onGenerate(designees)}
           className="flex items-center gap-2 border border-leaf bg-leaf px-5 py-2.5 text-sm font-semibold text-paper transition-colors hover:bg-leaf-bright disabled:cursor-not-allowed disabled:opacity-40"
         >
           <FileDown size={16} /> Download the will as PDF

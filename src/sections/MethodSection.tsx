@@ -83,6 +83,7 @@ export function MethodSection() {
               ["08-engine-api.md", "technical reference for the calculation engine"],
               ["09-jafari-notes.md", "how the Ja'fari system differs (documented, not computed)"],
               ["10-will-document.md", "the downloadable wasiyya PDF: structure and drafting choices"],
+              ["11-accounts-privacy.md", "the local account framework and its GDPR/CCPA compliance design"],
             ].map(([f, d]) => (
               <li key={f} className="flex gap-2">
                 <code className="shrink-0 text-[12px] text-leaf">{f}</code>

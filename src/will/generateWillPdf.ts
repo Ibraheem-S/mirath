@@ -6,6 +6,7 @@
 import { jsPDF } from "jspdf";
 import type { CalcResult, EstateInput, FamilyInput } from "@/engine";
 import { fmt, fmtPct, frac } from "@/engine";
+import type { Designee } from "@/account/types";
 
 export interface WillMeta {
   testatorName: string;
@@ -56,7 +57,16 @@ export function generateWillPdf(
   family: FamilyInput,
   estate: EstateInput,
   meta: WillMeta,
+  designees: Designee[] = [],
 ): void {
+  // Designees from the user's account fill any role the form left blank.
+  const named = (role: Designee["role"]) =>
+    designees.find((d) => d.role === role && d.name.trim()) ?? null;
+  const executorDesignee = named("executor");
+  const bequestDesignee = named("bequest-beneficiary");
+  const witness1 = named("witness-1");
+  const witness2 = named("witness-2");
+  const guardian = named("guardian-minors");
   const doc = new jsPDF({ unit: "pt", format: "letter" });
   const W = 612;
   const M = 64; // margin
@@ -166,7 +176,12 @@ export function generateWillPdf(
   // ---------- Article II ----------
   heading("ARTICLE II — THE BEQUEST (AL-WASIYYA)", "Limited by the Sunnah to one third of the estate after debts (Sahih al-Bukhari 2742; Sahih Muslim 1628).");
   if (p.wasiyyaApplied > 0) {
-    const recipient = meta.bequestRecipient.trim() || "the beneficiary named in my records";
+    const recipient =
+      meta.bequestRecipient.trim() ||
+      (bequestDesignee
+        ? `${bequestDesignee.name.trim()}${bequestDesignee.relationship.trim() ? ` (my ${bequestDesignee.relationship.trim()})` : ""}`
+        : "") ||
+      "the beneficiary named in my records";
     para(
       `From the estate remaining after Article I, I bequeath ${money(p.wasiyyaApplied, p.currency)} to ${recipient}. This bequest does not exceed one third of the said remainder (the lawful maximum of ${money(p.wasiyyaAllowedCap, p.currency)}).`,
     );
@@ -288,10 +303,26 @@ export function generateWillPdf(
 
   // ---------- Article V ----------
   heading("ARTICLE V — EXECUTOR");
-  const executor = meta.executorName.trim() || "________________________";
+  const executor =
+    meta.executorName.trim() ||
+    (executorDesignee
+      ? `${executorDesignee.name.trim()}${executorDesignee.relationship.trim() ? ` (my ${executorDesignee.relationship.trim()})` : ""}`
+      : "") ||
+    "________________________";
   para(
     `I appoint ${executor} as executor of this will, to pay my funeral expenses, debts and bequest in the order of Articles I–II, to distribute the residue exactly as Article III provides, and to seek the guidance of a qualified scholar should any question arise that this document does not resolve.`,
   );
+
+  // ---------- Article VI (conditional) ----------
+  if (guardian) {
+    heading(
+      "ARTICLE VI — GUARDIAN OF MINOR CHILDREN",
+      "Appointing a guardian for minors is a recognized object of the wasiyya in all four schools.",
+    );
+    para(
+      `I appoint ${guardian.name.trim()}${guardian.relationship.trim() ? `, my ${guardian.relationship.trim()},` : ""} as guardian (wasi) of my minor children, to care for their persons and their affairs until they reach maturity, and I ask them to fear Allah concerning my children and to raise them upon the faith.`,
+    );
+  }
 
   // ---------- signatures ----------
   heading("SIGNATURES AND WITNESSES", "Signed and declared in the presence of two witnesses.");
@@ -309,8 +340,8 @@ export function generateWillPdf(
   sigLine(`Testator — ${name}`, M);
   sigLine("Date", M + CW - 140);
   y += 52;
-  sigLine("Witness 1 — name and signature", M);
-  sigLine("Witness 2 — name and signature", M + CW - 220);
+  sigLine(witness1 ? `Witness 1 — ${witness1.name.trim()}` : "Witness 1 — name and signature", M);
+  sigLine(witness2 ? `Witness 2 — ${witness2.name.trim()}` : "Witness 2 — name and signature", M + CW - 220);
   y += 40;
 
   // ---------- Schedule A ----------

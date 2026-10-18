@@ -112,6 +112,91 @@ try {
     );
   }
 
+  // ================= account framework flow =================
+  log("account flow test…");
+  await page.setViewport({ width: 1440, height: 900 });
+  await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
+  await delay(2500);
+
+  const clickButton = (text) =>
+    page.evaluate((t) => {
+      const btn = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes(t));
+      if (!btn) throw new Error(`button not found: ${t}`);
+      btn.click();
+    }, text);
+  const typeInto = (selector, value) =>
+    page.evaluate(
+      ({ s, v }) => {
+        const input = document.querySelector(s);
+        if (!input) throw new Error(`input not found: ${s}`);
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+        setter.call(input, v);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      },
+      { s: selector, v: value },
+    );
+
+  // 1. open dialog, create account with consent
+  await clickButton("Account");
+  await delay(600);
+  await typeInto("input[aria-label='Your name']", "Amina Verify");
+  await page.evaluate(() => document.querySelector("input[aria-label='Consent']")?.click());
+  await delay(300);
+  await clickButton("Create local account");
+  await delay(1000);
+  const accountCreated = await page.evaluate(() => !!localStorage.getItem("mirath.account.v1"));
+
+  // 2. add a designee (first one defaults to executor role)
+  await clickButton("Add designee");
+  await delay(400);
+  await typeInto("input[aria-label='Designee name']", "Khalid Verify");
+  await delay(1000); // 600ms debounced persist
+  const designeeSaved = await page.evaluate(() =>
+    (localStorage.getItem("mirath.account.v1") ?? "").includes("Khalid Verify"),
+  );
+  await page.screenshot({ path: path.join(ROOT, "verify-account-dialog.png") });
+
+  // 3. export JSON → machine-readable portability file (GDPR Art. 20)
+  await clickButton("Export JSON");
+  let jsonName = null;
+  for (let i = 0; i < 15; i++) {
+    await delay(400);
+    jsonName = fs.readdirSync(downloadDir).find((f) => f.endsWith(".json"));
+    if (jsonName) break;
+  }
+  let exportOk = false;
+  if (jsonName) {
+    try {
+      exportOk =
+        JSON.parse(fs.readFileSync(path.join(downloadDir, jsonName), "utf8")).displayName ===
+        "Amina Verify";
+    } catch { exportOk = false; }
+  }
+
+  // 4. reload → profile restores: name in header trigger, will fields prefilled
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await delay(2500);
+  const persisted = await page.evaluate(() => document.body.innerText.includes("Amina Verify"));
+  const prefilled = await page.evaluate(() => {
+    const inputs = [...document.querySelectorAll("input")];
+    const testator = inputs.find((i) => i.placeholder?.includes("Amina bint"));
+    const executor = inputs.find((i) => i.placeholder?.includes("my brother Khalid"));
+    return testator?.value === "Amina Verify" && executor?.value === "Khalid Verify";
+  });
+
+  // 5. reopen dialog → erase everything (GDPR Art. 17), storage must be empty
+  await clickButton("Amina Verify");
+  await delay(600);
+  await clickButton("Erase everything");
+  await delay(400);
+  await clickButton("Yes, erase");
+  await delay(600);
+  const erased = await page.evaluate(() => !localStorage.getItem("mirath.account.v1"));
+  const backToAnonymous = await page.evaluate(() => {
+    const btn = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Account");
+    return !!btn;
+  });
+
   log("mobile pass…");
   await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
   await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
@@ -126,6 +211,12 @@ try {
   console.log("INSOLVENCY_ERROR_BANNER:", hasInsolvencyError ? "shown ✓" : "MISSING ✗");
   console.log("TOOLTIP_ON_HOVER:", tooltipShown ? "shown ✓" : "MISSING ✗");
   console.log("WILL_PDF_DOWNLOAD:", pdfOk ? `ok ✓ (${pdfName})` : "MISSING ✗");
+  console.log("ACCOUNT_CREATE:", accountCreated ? "persisted ✓" : "FAILED ✗");
+  console.log("ACCOUNT_DESIGNEE_SAVED:", designeeSaved ? "persisted ✓" : "FAILED ✗");
+  console.log("ACCOUNT_EXPORT_JSON:", exportOk ? `ok ✓ (${jsonName})` : "MISSING ✗");
+  console.log("ACCOUNT_RESTORE_ON_RELOAD:", persisted ? "restored ✓" : "FAILED ✗");
+  console.log("WILL_FIELDS_PREFILLED:", prefilled ? "prefilled ✓" : "FAILED ✗");
+  console.log("ACCOUNT_ERASE:", erased && backToAnonymous ? "erased, anonymous ✓" : "FAILED ✗");
   console.log("DONE");
 } finally {
   server.close();

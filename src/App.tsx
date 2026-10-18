@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { calculate, emptyFamily, type EstateInput, type FamilyInput, type RuleOptions } from "@/engine";
 import { emptyWillMeta, generateWillPdf, type WillMeta } from "@/will/generateWillPdf";
+import { AccountProvider } from "@/account/AccountContext";
+import { AccountDialog } from "@/account/AccountDialog";
 import { Star, StarDivider } from "@/components/Star";
 import { DeceasedSection } from "@/sections/DeceasedSection";
 import { FamilySection } from "@/sections/FamilySection";
@@ -47,6 +49,18 @@ export default function App() {
 
   return (
     <TooltipProvider>
+      <AccountProvider
+        plan={{ family, estate, options, willMeta }}
+        onRestore={(p, _designees, displayName) => {
+          setFamily(p.family);
+          setEstate(p.estate);
+          setOptions(p.options);
+          setWillMeta((m) => ({
+            ...p.willMeta,
+            testatorName: p.willMeta.testatorName || m.testatorName || displayName,
+          }));
+        }}
+      >
       <div className="min-h-screen bg-background">
         {/* ======== masthead ======== */}
         <header className="border-b-2 border-ink bg-paper">
@@ -62,10 +76,13 @@ export default function App() {
                 </p>
               </div>
             </div>
-            <p className="max-w-xs text-right text-[11.5px] leading-snug text-ink-faint">
-              'Allah instructs you concerning your children…' — Quran 4:11.
-              Computed per the four Sunni schools.
-            </p>
+            <div className="flex items-center gap-3">
+              <AccountDialog />
+              <p className="max-w-xs text-right text-[11.5px] leading-snug text-ink-faint">
+                'Allah instructs you concerning your children…' — Quran 4:11.
+                Computed per the four Sunni schools.
+              </p>
+            </div>
           </div>
           {/* sticky section nav */}
           <nav className="no-print sticky top-0 z-20 border-t border-ink/15 bg-paper/95 backdrop-blur">
@@ -117,7 +134,7 @@ export default function App() {
             result={result}
             meta={willMeta}
             onMeta={(p) => setWillMeta((m) => ({ ...m, ...p }))}
-            onGenerate={() => generateWillPdf(result, family, estate, willMeta)}
+            onGenerate={(designees) => generateWillPdf(result, family, estate, willMeta, designees)}
           />
           <MethodSection />
         </main>
@@ -135,6 +152,7 @@ export default function App() {
           </div>
         </footer>
       </div>
+      </AccountProvider>
     </TooltipProvider>
   );
 }
